@@ -1,7 +1,7 @@
 from .context import pobx
 import pytest
 
-from pobx import observables, autorun, action, computed
+from pobx import observables, autorun, action, computed, computedproperty
 
 class Pair():
     x, y = observables(2)
@@ -14,9 +14,9 @@ class Pair():
         self.x = x
         self.y = y
 
-    # @computed
-    # def diff(self):
-    #     return self.y - self.x
+    @computedproperty
+    def diff(self):
+        return self.y - self.x
 
 called_print_diff = 0
 
@@ -126,4 +126,38 @@ def test_autorun_computed():
     assert pair.x == 10
     assert pair.y == 12
     assert called_diff == 4
+    assert called_print_diff == 2
+
+def test_autorun_computedproperty():
+    print("Testing autorun with computed property")
+
+    pair = Pair(5, 7)
+
+    called_print_diff = 0
+
+    def print_diff():
+        nonlocal called_print_diff
+        print("Difference:", pair.diff)
+        called_print_diff += 1
+    sub = autorun(print_diff)
+    assert called_print_diff == 1
+
+    @action
+    def set_values():
+        pair.x = 4
+        pair.y = 2
+    set_values()
+    assert called_print_diff == 2
+
+    pair.update(10, 8)
+    assert called_print_diff == 2
+
+    sub.dispose()
+
+    pair.y = 12
+
+    print(f"Final: x={pair.x}, y={pair.y}")
+
+    assert pair.x == 10
+    assert pair.y == 12
     assert called_print_diff == 2
