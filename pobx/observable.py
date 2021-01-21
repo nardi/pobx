@@ -3,6 +3,7 @@ import rx.operators as op
 from rx.subject import Subject
 from rx.disposable import Disposable
 from contextvars import ContextVar
+import wrapt
 
 from .utils import dropargs
 
@@ -118,10 +119,15 @@ def run_in_action(func):
 
     prev_ctx = action_ctx.get()
     action_ctx.set(ctx)
-    func()
+    val = func()
     action_ctx.set(prev_ctx)
 
     for obs in ctx["to_update"]:
         obs.deliver_values()
 
     del ctx
+    return val
+
+@wrapt.decorator
+def action(wrapped, instance, args, kwargs):
+    return run_in_action(lambda: wrapped(*args, **kwargs))

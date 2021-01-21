@@ -1,12 +1,16 @@
 from .context import pobx
 import pytest
 
-from pobx import observables, autorun, run_in_action
+from pobx import observables, autorun, action
 
 class Pair():
     x, y = observables(2)
     
     def __init__(self, x, y):
+        self.update(x, y)
+
+    @action
+    def update(self, x, y):
         self.x = x
         self.y = y
 
@@ -32,20 +36,23 @@ def test_autorun_object():
     pair.x = 4
     pair.y = 2
 
+    pair.x = 6
+    pair.y = 10
+
     diff.dispose()
 
     pair.y = 12
 
     print(f"Final: x={pair.x}, y={pair.y}")
 
-    assert pair.x == 4
+    assert pair.x == 6
     assert pair.y == 12
-    assert called_print_diff == 3
+    assert called_print_diff == 5
 
 def test_autorun_action():
     global called_print_diff
 
-    print("Testing autorun with action")
+    print("Testing autorun with actions")
 
     pair = Pair(5, 10)
 
@@ -53,10 +60,13 @@ def test_autorun_action():
 
     diff = autorun(lambda: print_diff(pair))
 
+    @action
     def set_values():
         pair.x = 4
         pair.y = 2
-    run_in_action(set_values)
+    set_values()
+
+    pair.update(6, 10)
 
     diff.dispose()
 
@@ -64,6 +74,6 @@ def test_autorun_action():
 
     print(f"Final: x={pair.x}, y={pair.y}")
 
-    assert pair.x == 4
+    assert pair.x == 6
     assert pair.y == 12
-    assert called_print_diff == 2
+    assert called_print_diff == 3
