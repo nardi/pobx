@@ -2,6 +2,7 @@ import rx
 from rx.subject import Subject
 from rx.disposable import Disposable
 from contextvars import ContextVar
+import wrapt
 
 from .actions import action_ctx, BufferedObserver
 from .utils import dropargs
@@ -15,17 +16,18 @@ class ObservableValue():
         self.observers = []
 
     def set(self, value):
-        self.current_value = value
-        self.values.on_next(self.current_value)
+        if self.current_value != value:
+            self.current_value = value
+            self.values.on_next(self.current_value)
 
-        ctx = action_ctx.get()
-        if "to_update" in ctx:
-            for obs in self.observers:
-                if obs not in ctx["to_update"]:
-                    ctx["to_update"].append(obs)
-        else:
-            for obs in self.observers:
-                obs.deliver_values()
+            ctx = action_ctx.get()
+            if "to_update" in ctx:
+                for obs in self.observers:
+                    if obs not in ctx["to_update"]:
+                        ctx["to_update"].append(obs)
+            else:
+                for obs in self.observers:
+                    obs.deliver_values()
 
     def get(self):
         ctx = obs_ctx.get()
@@ -68,17 +70,26 @@ observable = ObservableFactory()
 def observables(n):
     return tuple(map(lambda _: observable(), range(n)))
 
-def autorun(func):
+def autorun(func, return_observable=None):
+    def run_func():
+        return_value = func()
+
+        if return_observable:
+            return_observable.set(return_value)
+
     ctx = {
-        "observer": BufferedObserver(dropargs(func)),
+        "observer": BufferedObserver(dropargs(run_func)),
         "subs": []
     }
 
-    def run_func():
+    def run_func_in_ctx():
         prev_ctx = obs_ctx.get()
         obs_ctx.set(ctx)
-        func()
+        return_value = func()
         obs_ctx.set(prev_ctx)
+
+        if return_observable:
+            return_observable.set(return_value)
 
     def dispose():
         nonlocal ctx, func
@@ -88,6 +99,12 @@ def autorun(func):
         del ctx
         del func
 
-    run_func()
+    run_func_in_ctx()
     return Disposable(dispose)
 
+def computed(func):
+    return_observable = ObservableValue()
+    autorun(dropargs(func), return_observable)
+    def wrapper():
+        return return_observable.get()
+    return wrapper

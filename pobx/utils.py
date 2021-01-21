@@ -1,4 +1,5 @@
-def dropargs(func):
-    def wrapper(*args, **kwargs):
-        return func()
-    return wrapper
+import wrapt
+
+@wrapt.decorator
+def dropargs(wrapped, instance, args, kwargs):
+    return wrapped()
