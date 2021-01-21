@@ -1,4 +1,5 @@
 import rx
+import rx.operators as op
 from rx.subject import Subject
 from rx.disposable import Disposable
 from contextvars import ContextVar
@@ -6,27 +7,58 @@ from contextvars import ContextVar
 from .utils import dropargs
 
 obs_ctx = ContextVar("obs_ctx", default={})
+action_ctx = ContextVar("action_ctx", default={})
 
 class ObservableValue():
     def __init__(self, initial_value=None):
         self.current_value = initial_value
         self.values = Subject()
-
-        def update(value):
-            self.current_value = value
-        self.values.subscribe(
-            on_next=update
-        )
+        self.observers = []
 
     def set(self, value):
-        self.values.on_next(value)
+        self.current_value = value
+        self.values.on_next(self.current_value)
+
+        ctx = action_ctx.get()
+        if "to_update" in ctx:
+            for obs in self.observers:
+                if obs not in ctx["to_update"]:
+                    ctx["to_update"].append(obs)
+        else:
+            for obs in self.observers:
+                obs.deliver_values()
 
     def get(self):
         ctx = obs_ctx.get()
-        if "observer" in ctx and "subs" in ctx and self.values not in ctx["subs"]:
-            ctx["subs"][self.values] = self.values.subscribe(ctx["observer"])
+        if "observer" in ctx and ctx["observer"] not in self.observers:
+            observer = ctx["observer"]
+            self.observers.append(observer)
+            sub = self.values.subscribe(observer)
+            def dispose():
+                sub.dispose()
+                self.observers.remove(observer)
+            ctx["subs"].append(dispose)
         
         return self.current_value
+
+class BufferedObserver():
+    def __init__(self, func):
+        self.values = Subject()
+        self.boundaries = Subject()
+        self.grouped_values = self.values.pipe(
+            op.buffer(self.boundaries)
+        )
+
+        self.sub = self.grouped_values.subscribe(func)
+
+    def deliver_values(self):
+        self.boundaries.on_next(True)
+
+    def __call__(self, value):
+        self.values.on_next(value)
+
+    def dispose(self):
+        self.sub.dispose()
 
 class ObservableProperty():
     def __set_name__(self, objtype, name):
@@ -58,8 +90,8 @@ def observables(n):
 
 def autorun(func):
     ctx = {
-        "observer": dropargs(func),
-        "subs": {}
+        "observer": BufferedObserver(dropargs(func)),
+        "subs": []
     }
 
     def run_func():
@@ -70,10 +102,26 @@ def autorun(func):
 
     def dispose():
         nonlocal ctx, func
-        for sub in ctx["subs"].values():
-            sub.dispose()
-        del func
+        for dispose_sub in ctx["subs"]:
+            dispose_sub()
+        ctx["observer"].dispose()
         del ctx
+        del func
 
     run_func()
     return Disposable(dispose)
+
+def run_in_action(func):
+    ctx = {
+        "to_update": []
+    }
+
+    prev_ctx = action_ctx.get()
+    action_ctx.set(ctx)
+    func()
+    action_ctx.set(prev_ctx)
+
+    for obs in ctx["to_update"]:
+        obs.deliver_values()
+
+    del ctx
