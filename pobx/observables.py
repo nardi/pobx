@@ -1,14 +1,12 @@
 import rx
-import rx.operators as op
 from rx.subject import Subject
 from rx.disposable import Disposable
 from contextvars import ContextVar
-import wrapt
 
+from .actions import action_ctx, BufferedObserver
 from .utils import dropargs
 
 obs_ctx = ContextVar("obs_ctx", default={})
-action_ctx = ContextVar("action_ctx", default={})
 
 class ObservableValue():
     def __init__(self, initial_value=None):
@@ -38,28 +36,9 @@ class ObservableValue():
             def dispose():
                 sub.dispose()
                 self.observers.remove(observer)
-            ctx["subs"].append(dispose)
+            ctx["subs"].append(Disposable(dispose))
         
         return self.current_value
-
-class BufferedObserver():
-    def __init__(self, func):
-        self.values = Subject()
-        self.boundaries = Subject()
-        self.grouped_values = self.values.pipe(
-            op.buffer(self.boundaries)
-        )
-
-        self.sub = self.grouped_values.subscribe(func)
-
-    def deliver_values(self):
-        self.boundaries.on_next(True)
-
-    def __call__(self, value):
-        self.values.on_next(value)
-
-    def dispose(self):
-        self.sub.dispose()
 
 class ObservableProperty():
     def __set_name__(self, objtype, name):
@@ -103,8 +82,8 @@ def autorun(func):
 
     def dispose():
         nonlocal ctx, func
-        for dispose_sub in ctx["subs"]:
-            dispose_sub()
+        for sub in ctx["subs"]:
+            sub.dispose()
         ctx["observer"].dispose()
         del ctx
         del func
@@ -112,22 +91,3 @@ def autorun(func):
     run_func()
     return Disposable(dispose)
 
-def run_in_action(func):
-    ctx = {
-        "to_update": []
-    }
-
-    prev_ctx = action_ctx.get()
-    action_ctx.set(ctx)
-    val = func()
-    action_ctx.set(prev_ctx)
-
-    for obs in ctx["to_update"]:
-        obs.deliver_values()
-
-    del ctx
-    return val
-
-@wrapt.decorator
-def action(wrapped, instance, args, kwargs):
-    return run_in_action(lambda: wrapped(*args, **kwargs))

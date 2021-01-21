@@ -1,1 +1,2 @@
-from .observable import observable, observables, autorun, run_in_action, action
+from .observables import observable, observables, autorun
+from .actions import run_in_action, action
