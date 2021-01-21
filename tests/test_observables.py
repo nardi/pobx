@@ -99,7 +99,7 @@ def test_autorun_computed():
 
     def print_diff():
         nonlocal called_print_diff
-        print("Difference:", diff())
+        print("Difference:", diff.get())
         called_print_diff += 1
     sub = autorun(print_diff)
     assert called_diff == 1

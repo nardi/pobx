@@ -5,9 +5,7 @@ def computed(func, _self=None):
     def call_func():
         return func(_self) if _self else func()
     autorun(call_func, return_observable)
-    def wrapper(*args, **kwargs):
-        return return_observable.get()
-    return wrapper
+    return return_observable
 
 class ComputedProperty():
     def __init__(self, func):
@@ -21,7 +19,7 @@ class ComputedProperty():
         if not hasattr(obj, self.attr):
             setattr(obj, self.attr, computed(self.func, obj))
         obs = getattr(obj, self.attr)
-        return obs()
+        return obs.get()
 
 def computedproperty(func):
     return ComputedProperty(func)
