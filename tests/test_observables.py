@@ -95,8 +95,15 @@ def test_autorun_computed():
         called_diff += 1
         return pair.y - pair.x
 
-    sub = autorun(lambda: print(diff()))
+    called_print_diff = 0
+
+    def print_diff():
+        nonlocal called_print_diff
+        print("Difference:", diff())
+        called_print_diff += 1
+    sub = autorun(print_diff)
     assert called_diff == 1
+    assert called_print_diff == 1
 
     @action
     def set_values():
@@ -104,9 +111,11 @@ def test_autorun_computed():
         pair.y = 2
     set_values()
     assert called_diff == 2
+    assert called_print_diff == 2
 
     pair.update(10, 8)
     assert called_diff == 3
+    assert called_print_diff == 2
 
     sub.dispose()
 
@@ -117,3 +126,4 @@ def test_autorun_computed():
     assert pair.x == 10
     assert pair.y == 12
     assert called_diff == 4
+    assert called_print_diff == 2
