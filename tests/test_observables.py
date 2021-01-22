@@ -125,7 +125,7 @@ def test_autorun_computed():
 
     assert pair.x == 10
     assert pair.y == 12
-    assert called_diff == 4
+    assert called_diff == 3
     assert called_print_diff == 2
 
 def test_autorun_computedproperty():

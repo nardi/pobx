@@ -5,15 +5,17 @@ from contextvars import ContextVar
 import wrapt
 
 from .actions import action_ctx, BufferedObserver
-from .utils import dropargs
+from .utils import dropargs, noop
 
 obs_ctx = ContextVar("obs_ctx", default={})
 
 class ObservableValue():
-    def __init__(self, initial_value=None):
+    def __init__(self, initial_value=None, on_start=noop, on_stop=noop):
         self.current_value = initial_value
         self.values = Subject()
         self.observers = []
+        self.on_start = on_start
+        self.on_stop = on_stop
 
     def set(self, value):
         if self.current_value != value:
@@ -33,11 +35,15 @@ class ObservableValue():
         ctx = obs_ctx.get()
         if "observer" in ctx and ctx["observer"] not in self.observers:
             observer = ctx["observer"]
+            if not self.observers:
+                self.on_start()
             self.observers.append(observer)
             sub = self.values.subscribe(observer)
             def dispose():
                 sub.dispose()
                 self.observers.remove(observer)
+                if not self.observers:
+                    self.on_stop()
             ctx["subs"].append(Disposable(dispose))
         
         return self.current_value
@@ -70,26 +76,17 @@ observable = ObservableFactory()
 def observables(n):
     return tuple(map(lambda _: observable(), range(n)))
 
-def autorun(func, return_observable=None):
-    def run_func():
-        return_value = func()
-
-        if return_observable:
-            return_observable.set(return_value)
-
+def autorun(func):
     ctx = {
-        "observer": BufferedObserver(dropargs(run_func)),
+        "observer": BufferedObserver(dropargs(func)),
         "subs": []
     }
 
     def run_func_in_ctx():
         prev_ctx = obs_ctx.get()
         obs_ctx.set(ctx)
-        return_value = func()
+        func()
         obs_ctx.set(prev_ctx)
-
-        if return_observable:
-            return_observable.set(return_value)
 
     def dispose():
         nonlocal ctx, func

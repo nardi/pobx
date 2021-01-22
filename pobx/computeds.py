@@ -1,11 +1,19 @@
 from .observables import ObservableValue, autorun
 
-def computed(func, _self=None):
-    return_observable = ObservableValue()
+def computed(func):
     def call_func():
-        return func(_self) if _self else func()
-    autorun(call_func, return_observable)
-    return return_observable
+        return_val = func()
+        return_obs.set(return_val)
+
+    sub = None
+    def on_start():
+        nonlocal sub
+        sub = autorun(call_func)
+    def on_stop():
+        sub.dispose()
+
+    return_obs = ObservableValue(None, on_start, on_stop)
+    return return_obs
 
 class ComputedProperty():
     def __init__(self, func):
@@ -17,7 +25,7 @@ class ComputedProperty():
     
     def __get__(self, obj, objtype=None):
         if not hasattr(obj, self.attr):
-            setattr(obj, self.attr, computed(self.func, obj))
+            setattr(obj, self.attr, computed(lambda: self.func(obj)))
         obs = getattr(obj, self.attr)
         return obs.get()
 
