@@ -118,7 +118,8 @@ def test_autorun_computed():
     assert called_print_diff == 2
 
     sub.dispose()
-
+    # After this diff is no longer being used, so no reason to recalculate
+    # the value when y changes.
     pair.y = 12
 
     print(f"Final: x={pair.x}, y={pair.y}")
