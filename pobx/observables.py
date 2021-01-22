@@ -13,7 +13,7 @@ class ObservableValue():
     def __init__(self, initial_value=None, on_start=noop, on_stop=noop):
         self.current_value = initial_value
         self.values = Subject()
-        self.observers = []
+        self.observers = {}
         self.on_start = on_start
         self.on_stop = on_stop
 
@@ -33,18 +33,19 @@ class ObservableValue():
 
     def get(self):
         ctx = obs_ctx.get()
-        if "observer" in ctx and ctx["observer"] not in self.observers:
+        if "observer" in ctx:
             observer = ctx["observer"]
             if not self.observers:
                 self.on_start()
-            self.observers.append(observer)
-            sub = self.values.subscribe(observer)
-            def dispose():
-                sub.dispose()
-                self.observers.remove(observer)
-                if not self.observers:
-                    self.on_stop()
-            ctx["subs"].append(Disposable(dispose))
+            if observer not in self.observers:
+                sub = self.values.subscribe(observer)
+                def dispose():
+                    sub.dispose()
+                    del self.observers[observer]
+                    if not self.observers:
+                        self.on_stop()
+                self.observers[observer] = Disposable(dispose)
+            ctx["subs"].add(self.observers[observer])
         
         return self.current_value
 
@@ -77,16 +78,26 @@ def observables(n):
     return tuple(map(lambda _: observable(), range(n)))
 
 def autorun(func):
-    ctx = {
-        "observer": BufferedObserver(dropargs(func)),
-        "subs": []
-    }
+    def run_func():
+        # TODO: write unit test for conditional observer. Something like:
+        # if pair.y > 10:
+        #   print(pair.x)
+        # and then change x when y is less than 10.
+        prev_subs = ctx["subs"]
+        ctx["subs"] = set()
 
-    def run_func_in_ctx():
-        prev_ctx = obs_ctx.get()
+        parent_ctx = obs_ctx.get()
         obs_ctx.set(ctx)
         func()
-        obs_ctx.set(prev_ctx)
+        obs_ctx.set(parent_ctx)
+
+        for sub in prev_subs - ctx["subs"]:
+            sub.dispose()
+
+    ctx = {
+        "observer": BufferedObserver(dropargs(run_func)),
+        "subs": set()
+    }
 
     def dispose():
         nonlocal ctx, func
@@ -96,5 +107,7 @@ def autorun(func):
         del ctx
         del func
 
-    run_func_in_ctx()
-    return Disposable(dispose)
+    run_func()    
+
+    sub = Disposable(dispose)
+    return sub
