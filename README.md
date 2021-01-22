@@ -22,4 +22,5 @@ Next up:
  - Typing.
  - Handling errors properly.
  - How to ensure subscriptions to observables are automatically terminated at an appropriate time? E.g. when calling `computed` in an observing function ([example from MobX](https://mobx.js.org/computeds-with-args.html)).
+    + This is now taken care of a bit better: subscriptions are now disposed if they are no longer listened to after (re)running an autorun function. Moreover, computed values are not recomputed if no one is listening.
  - Documentation and intelligible code ;)
